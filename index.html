@@ -31,23 +31,31 @@
       align-items: flex-start;
     }
 
-    textarea, #output {
+    textarea {
       flex: 0.7;
       padding: 15px;
       font-size: 16px;
-      height: 180px;
+      height: 220px;
       resize: none;
       border: 1px solid #444;
       background-color: #1e1e1e;
       color: #fff;
       border-radius: 8px;
       box-shadow: 0 0 10px rgba(0, 255, 255, 0.1);
-      overflow-y: auto;
     }
 
     #output {
       white-space: pre-wrap;
-      margin-bottom: 10px;
+      padding: 15px;
+      font-size: 16px;
+      height: 180px;
+      border: 1px solid #444;
+      background-color: #1e1e1e;
+      color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0, 255, 255, 0.1);
+      overflow-y: auto;
+      flex-grow: 1;
     }
 
     .correct {
@@ -67,6 +75,8 @@
       display: flex;
       flex-direction: column;
       flex: 1;
+      height: 220px;
+      justify-content: space-between;
     }
 
     .section-label {
@@ -106,7 +116,6 @@
     }
 
     audio {
-      margin-top: 10px;
       width: 100%;
     }
   </style>
@@ -126,9 +135,7 @@
     </div>
 
     <div class="button-box">
-      <button onclick="startListening()">🎤START SPEAKING</button>
-      <button id="startRecord">🎙️REKAM SUARA</button>
-      <button id="stopRecord" disabled>⏹️STOP REKAMAN</button>
+      <button onclick="startSpeaking()">🎤START SPEAKING</button>
       <button id="playAudio" disabled>▶️PUTAR REKAMAN</button>
     </div>
   </div>
@@ -136,8 +143,26 @@
   <script>
     const outputDiv = document.getElementById('output');
     const inputTextArea = document.getElementById('inputText');
+    const playBtn = document.getElementById('playAudio');
+    const audioEl = document.getElementById('audioPlayback');
 
-    function startListening() {
+    let mediaRecorder;
+    let audioChunks = [];
+
+    async function startSpeaking() {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+
+      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        audioEl.src = audioUrl;
+        playBtn.disabled = false;
+      };
+      mediaRecorder.start();
+
       if (!('webkitSpeechRecognition' in window)) {
         alert("Speech recognition not supported. Please use Google Chrome.");
         return;
@@ -159,7 +184,6 @@
         const originalWords = originalText.split(/\s+/);
 
         let resultHTML = `<div class="section-label">✅ Comparison Result:</div>`;
-
         for (let i = 0; i < originalWords.length; i++) {
           if (spokenWords[i] === originalWords[i]) {
             resultHTML += `<span class="correct">${originalWords[i]}</span> `;
@@ -173,43 +197,13 @@
 
       recognition.onerror = function(event) {
         outputDiv.innerHTML = "❌ Error: " + event.error;
+        mediaRecorder.stop();
+      };
+
+      recognition.onend = function() {
+        mediaRecorder.stop();
       };
     }
-
-    // Perekaman Suara
-    let mediaRecorder;
-    let audioChunks = [];
-    const startBtn = document.getElementById('startRecord');
-    const stopBtn = document.getElementById('stopRecord');
-    const playBtn = document.getElementById('playAudio');
-    const audioEl = document.getElementById('audioPlayback');
-
-    startBtn.onclick = async () => {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream);
-      audioChunks = [];
-
-      mediaRecorder.ondataavailable = e => {
-        audioChunks.push(e.data);
-      };
-
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        const audioUrl = URL.createObjectURL(audioBlob);
-        audioEl.src = audioUrl;
-        playBtn.disabled = false;
-      };
-
-      mediaRecorder.start();
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-    };
-
-    stopBtn.onclick = () => {
-      mediaRecorder.stop();
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-    };
 
     playBtn.onclick = () => {
       audioEl.play();
