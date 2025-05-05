@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>English Pronunciation Checker</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: 'Segoe UI', sans-serif;
@@ -23,16 +24,15 @@
 
     .container {
       display: flex;
-      flex-direction: row;
       gap: 20px;
       max-width: 1200px;
       width: 100%;
       margin-top: 20px;
-      align-items: flex-start;
+      justify-content: center;
     }
 
-    textarea {
-      flex: 0.7;
+    textarea, #output {
+      flex: 1;
       padding: 15px;
       font-size: 16px;
       height: 220px;
@@ -42,20 +42,12 @@
       color: #fff;
       border-radius: 8px;
       box-shadow: 0 0 10px rgba(0, 255, 255, 0.1);
+      overflow-y: auto;
+	  margin-bottom: 20px;
     }
 
     #output {
       white-space: pre-wrap;
-      padding: 15px;
-      font-size: 16px;
-      height: 180px;
-      border: 1px solid #444;
-      background-color: #1e1e1e;
-      color: #fff;
-      border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0, 255, 255, 0.1);
-      overflow-y: auto;
-      flex-grow: 1;
     }
 
     .correct {
@@ -71,52 +63,64 @@
       border-radius: 3px;
     }
 
-    .output-wrapper {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-      height: 220px;
-      justify-content: space-between;
-    }
-
-    .section-label {
-      font-weight: bold;
-      color: #cccccc;
-      margin-bottom: 5px;
-      margin-left: 5px;
+    .audio-player {
+      width: 30%;
     }
 
     .button-box {
       display: flex;
-      flex-direction: column;
+      justify-content: center;
       gap: 10px;
-      background-color: #1e1e1e;
       padding: 15px;
       border: 1px solid #444;
       border-radius: 8px;
+      background-color: #1e1e1e;
+      width: 96.2%;
       box-shadow: 0 0 10px rgba(0, 255, 255, 0.1);
-      justify-content: flex-start;
-      height: fit-content;
     }
 
     button {
       padding: 12px 20px;
-      font-size: 14px;
+      font-size: 15px;
       background-color: #00bcd4;
       color: white;
       border: none;
       border-radius: 8px;
       cursor: pointer;
       transition: background-color 0.3s ease;
-      width: 180px;
+      width: 250px;
+	  height: 50px;
     }
 
     button:hover {
       background-color: #0097a7;
     }
 
-    audio {
+    table {
       width: 100%;
+      margin-top: 20px;
+      border-collapse: collapse;
+      background-color: #1e1e1e;
+    }
+
+    th, td {
+      padding: 10px;
+      text-align: center;
+      border: 1px solid #444;
+    }
+
+    th {
+      background-color: #00bcd4;
+    }
+
+    td {
+      color: #ffffff;
+    }
+
+    .chart-container {
+      width: 100%;
+      max-width: 600px;
+      margin: 20px 0;
     }
   </style>
 </head>
@@ -128,26 +132,71 @@
 
   <div class="container">
     <textarea id="inputText" placeholder="Type your paragraph here..."></textarea>
-
-    <div class="output-wrapper">
-      <div id="output">Result will appear here...</div>
-      <audio id="audioPlayback" controls></audio>
-    </div>
-
-    <div class="button-box">
-      <button onclick="startSpeaking()">🎤START SPEAKING</button>
-      <button id="playAudio" disabled>▶️PUTAR REKAMAN</button>
-    </div>
+    <div id="output">Result will appear here...</div>
   </div>
+
+  <div class="button-box">
+  <div class="audio-player">
+    <audio id="audioPlayback" controls></audio>
+  </div>
+    <button onclick="startSpeaking()">🎤 START SPEAKING</button>
+    <button id="playAudio" disabled>▶️ PLAY RECORDING</button>
+    <button onclick="playNative()">🗣 ️NATIVE PRONUNCIATION</button>
+  </div>
+
+  <div class="chart-container">
+    <canvas id="pronunciationChart"></canvas>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Date & Time</th>
+        <th>Correct Words</th>
+        <th>Incorrect Words</th>
+        <th>Score</th>
+      </tr>
+    </thead>
+    <tbody id="resultTable">
+      <!-- Dynamic Table Rows will appear here -->
+    </tbody>
+  </table>
 
   <script>
     const outputDiv = document.getElementById('output');
     const inputTextArea = document.getElementById('inputText');
     const playBtn = document.getElementById('playAudio');
     const audioEl = document.getElementById('audioPlayback');
-
+    const resultTable = document.getElementById('resultTable');
+    
     let mediaRecorder;
     let audioChunks = [];
+    let pronunciationResults = [];
+
+    // Chart.js setup
+    const ctx = document.getElementById('pronunciationChart').getContext('2d');
+    const pronunciationChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Correct', 'Incorrect'],
+        datasets: [{
+          label: 'Pronunciation Results',
+          data: [0, 0],
+          backgroundColor: ['#4caf50', '#f44336'],
+          borderColor: ['#4caf50', '#f44336'],
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 10
+          }
+        }
+      }
+    });
 
     async function startSpeaking() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -183,16 +232,34 @@
         const spokenWords = spokenText.split(/\s+/);
         const originalWords = originalText.split(/\s+/);
 
+        let correct = 0;
+        let wrong = 0;
         let resultHTML = `<div class="section-label">✅ Comparison Result:</div>`;
         for (let i = 0; i < originalWords.length; i++) {
           if (spokenWords[i] === originalWords[i]) {
             resultHTML += `<span class="correct">${originalWords[i]}</span> `;
+            correct++;
           } else {
             resultHTML += `<span class="wrong">${originalWords[i]}</span> `;
+            wrong++;
           }
         }
 
+        resultHTML += `<div style="margin-top:10px;">
+          ✅ <strong>Correct:</strong> ${correct} words<br>
+          ❌ <strong>Incorrect:</strong> ${wrong} words
+        </div>`;
+
         outputDiv.innerHTML = resultHTML;
+
+        // Save result to the table
+        const now = new Date();
+        const formattedDate = now.toLocaleString();
+        const score = (correct / originalWords.length) * 100;
+        pronunciationResults.push({ date: formattedDate, correct, wrong, score });
+
+        updateResultTable();
+        updateChart(correct, wrong);
       };
 
       recognition.onerror = function(event) {
@@ -208,6 +275,30 @@
     playBtn.onclick = () => {
       audioEl.play();
     };
+
+    function playNative() {
+      const utterance = new SpeechSynthesisUtterance(inputTextArea.value);
+      utterance.lang = 'en-US';
+      utterance.rate = 0.9;
+      speechSynthesis.speak(utterance);
+    }
+
+    function updateResultTable() {
+      resultTable.innerHTML = '';
+      pronunciationResults.forEach(result => {
+        const row = document.createElement('tr');
+        row.innerHTML = `<td>${result.date}</td>
+                         <td>${result.correct}</td>
+                         <td>${result.wrong}</td>
+                         <td>${result.score.toFixed(2)}%</td>`;
+        resultTable.appendChild(row);
+      });
+    }
+
+    function updateChart(correct, wrong) {
+      pronunciationChart.data.datasets[0].data = [correct, wrong];
+      pronunciationChart.update();
+    }
   </script>
 </body>
 </html>
